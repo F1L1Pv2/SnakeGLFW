@@ -375,7 +375,6 @@ int main(void)
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
-        glfwPollEvents();
 
         //calculating dt
         double current_time = glfwGetTime();
@@ -384,10 +383,11 @@ int main(void)
 
         old_time = current_time;
 
+        glfwPollEvents();
 
         update();
 
-        draw();
+        //draw();
 
         /* Poll for and process events */
     }
@@ -400,11 +400,11 @@ vector2 offset(0, 0);
 
 void draw() {
     /* Render here */
-    draw_grid();
 
     glClear(GL_COLOR_BUFFER_BIT);
+    draw_grid();
 
-    glBindBuffer(GL_ARRAY_BUFFER, instance_buffer);
+    //glBindBuffer(GL_ARRAY_BUFFER, instance_buffer);
     glBufferSubData(GL_ARRAY_BUFFER, 0, instances.size() * sizeof(instance), instances.data());
 
     glDrawElementsInstanced(GL_TRIANGLES, indices.size(), GL_UNSIGNED_BYTE, NULL, instances.size());
@@ -414,12 +414,14 @@ void draw() {
 
 }
 
+void update_player();
+
 vector2 player_vel(1, 0);
 vector2 player_coordinates(GRID_SIZE/2, GRID_SIZE/2);
 vector2 fruit_cordinates(0, 0);
 GRID_CELL player_texture = PLAYER_HEAD_RIGHT;
 
-#define WAIT_TIME 0.25f
+#define WAIT_TIME 0.4f
 double acumulator = WAIT_TIME;
 
 #define VEL_LEFT vector2(-1, 0)
@@ -427,15 +429,46 @@ double acumulator = WAIT_TIME;
 #define VEL_UP vector2(0, 1)
 #define VEL_DOWN vector2(0, -1)
 
-bool moved = false;
+#include <iostream>
+
+uint32_t max_move = 0;
+#define MAX_MOVE 2
 
 void key_fun_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    
+
     switch (key) {
-    case('A'): if(!moved && player_vel!=VEL_RIGHT){moved = true; player_vel = VEL_LEFT; player_texture = PLAYER_HEAD_LEFT;} break;
-    case('D'): if(!moved && player_vel!=VEL_LEFT) {moved = true; player_vel = VEL_RIGHT; player_texture = PLAYER_HEAD_RIGHT;} break;
-    case('W'): if(!moved && player_vel!=VEL_DOWN) {moved = true; player_vel = VEL_UP; player_texture = PLAYER_HEAD_UP;} break;
-    case('S'): if(!moved && player_vel != VEL_UP) {moved = true; player_vel = VEL_DOWN; player_texture = PLAYER_HEAD_DOWN; } break;
+    case('A'): if(player_vel!=VEL_RIGHT && player_vel != VEL_LEFT){
+        player_vel = VEL_LEFT; player_texture = PLAYER_HEAD_LEFT;
+        if (max_move < MAX_MOVE) {
+            max_move++;
+            update_player();
+            acumulator = 0.0;
+        }
+    }
+    case('D'): if(player_vel!=VEL_LEFT && player_vel != VEL_RIGHT) {
+        player_vel = VEL_RIGHT; player_texture = PLAYER_HEAD_RIGHT;
+        if (max_move < MAX_MOVE) {
+            max_move++;
+            update_player();
+            acumulator = 0.0;
+        }
+    } break;
+    case('W'): if(player_vel!=VEL_DOWN && player_vel != VEL_UP) {
+        player_vel = VEL_UP; player_texture = PLAYER_HEAD_UP;
+        if (max_move < MAX_MOVE) {
+            max_move++;
+            update_player();
+            acumulator = 0.0;
+        }
+    } break;
+    case('S'): if(player_vel != VEL_UP && player_vel != VEL_DOWN) {
+        player_vel = VEL_DOWN; player_texture = PLAYER_HEAD_DOWN;
+        if (max_move < MAX_MOVE) {
+            max_move++;
+            update_player();
+            acumulator = 0.0;
+        }
+    } break;
     default: break;
     }
     
@@ -486,43 +519,47 @@ bool check_die() {
     return false;
 }
 
+void update_player() {
+    clear_grid();
+    update_tail();
+    player_coordinates = player_coordinates + player_vel;
+    if (player_coordinates.x > GRID_SIZE - 1) player_coordinates.x = 0;
+    if (player_coordinates.y > GRID_SIZE - 1) player_coordinates.y = 0;
+    if (player_coordinates.x < 0) player_coordinates.x = GRID_SIZE - 1;
+    if (player_coordinates.y < 0) player_coordinates.y = GRID_SIZE - 1;
+
+    grid[grid_to_index(fruit_cordinates)] = FRUIT;
+    grid[grid_to_index(player_coordinates)] = player_texture;
+
+
+    for (auto& it : player_tail) {
+        grid[grid_to_index(it.position)] = PLAYER_TAIL;
+    }
+
+    if (player_coordinates == fruit_cordinates) {
+        fruit_cordinates = generate_random_cordinates();
+        player_tail.push_back(tail(vector2(GRID_SIZE+1, GRID_SIZE)));
+    }
+
+    if (check_die()) {
+        player_tail.clear();
+        clear_grid();
+        player_coordinates = generate_random_cordinates();
+        fruit_cordinates = generate_random_cordinates();
+        acumulator = WAIT_TIME * 2;
+    }
+}
+
 void update() {
 
     acumulator += dt;
 
+    draw();
+
     if(acumulator > WAIT_TIME){
-        moved = false;
-        clear_grid();
-
-        acumulator = 0.0f;
-        update_tail();
-        
-        player_coordinates =  player_coordinates + player_vel;
-        if (player_coordinates.x > GRID_SIZE-1) player_coordinates.x = 0;
-        if (player_coordinates.y > GRID_SIZE-1) player_coordinates.y = 0;
-        if (player_coordinates.x < 0) player_coordinates.x = GRID_SIZE - 1;
-        if (player_coordinates.y < 0) player_coordinates.y = GRID_SIZE - 1;
-
-        grid[grid_to_index(fruit_cordinates)] = FRUIT;
-        grid[grid_to_index(player_coordinates)] = player_texture;
-
-
-        for (auto& it : player_tail) {
-            grid[grid_to_index(it.position)] = PLAYER_TAIL;
-        }
-
-        if (player_coordinates == fruit_cordinates) {
-            fruit_cordinates = generate_random_cordinates();
-            player_tail.push_back(tail(vector2(0,0)));
-        }
-
-        if (check_die()) {
-            player_tail.clear();
-            clear_grid();
-            player_coordinates = generate_random_cordinates();
-            fruit_cordinates = generate_random_cordinates();
-            acumulator = WAIT_TIME * 2;
-        }
+        acumulator = 0.0;
+        max_move = 0;
+        update_player();
     }
 
 }
