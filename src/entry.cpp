@@ -9,14 +9,15 @@
 #include <string>
 #include <sstream>
 
-
-#include <game_state.h>
 #include <stdint.h>
 
 #include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+
+#define MINIAUDIO_IMPLEMENTATION
+#include "miniaudio.h"
 
 #include <graphic_math.h>
 #include <random>
@@ -50,6 +51,7 @@ GRID_CELL grid[GRID_SIZE * GRID_SIZE];
 void init();
 void draw();
 void update();
+void exit_func();
 
 uint32_t window_width = INITIAL_RESOLUTION_WIDTH, window_height = INITIAL_RESOLUTION_HEIGHT;
 uint8_t proj_loc;
@@ -164,6 +166,7 @@ void draw_grid() {
 
 
 void key_fun_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+
 
 
 int main(void)
@@ -393,6 +396,7 @@ int main(void)
     }
 
     glfwTerminate();
+    exit_func();
     return 0;
 }
 
@@ -421,9 +425,6 @@ vector2 player_coordinates(GRID_SIZE/2, GRID_SIZE/2);
 vector2 fruit_cordinates(0, 0);
 GRID_CELL player_texture = PLAYER_HEAD_RIGHT;
 
-#define WAIT_TIME 0.4f
-double acumulator = WAIT_TIME;
-
 #define VEL_LEFT vector2(-1, 0)
 #define VEL_RIGHT vector2(1, 0)
 #define VEL_UP vector2(0, 1)
@@ -431,52 +432,99 @@ double acumulator = WAIT_TIME;
 
 #include <iostream>
 
-uint32_t max_move = 0;
-#define MAX_MOVE 2
+bool moved = false;
+
+#define left_arrow 263
+#define right_arrow 262
+#define up_arrow 265
+#define down_arrow 264
+
+#define ACUMULATOR_MAX 0.2
+double acumulator = ACUMULATOR_MAX;
+
+void move();
+
+void move_left() {
+    if (player_vel != VEL_RIGHT && player_vel != VEL_LEFT && !moved) {
+        player_vel = VEL_LEFT; player_texture = PLAYER_HEAD_LEFT;
+        move();
+    }
+}
+
+void move_right() {
+    if (player_vel != VEL_LEFT && player_vel != VEL_RIGHT && !moved) {
+        player_vel = VEL_RIGHT; player_texture = PLAYER_HEAD_RIGHT;
+        move();
+    }
+}
+
+void move_up() {
+    if (player_vel != VEL_DOWN && player_vel != VEL_UP && !moved) {
+        player_vel = VEL_UP; player_texture = PLAYER_HEAD_UP;
+        move();
+    }
+}
+
+void move_down() {
+    if (player_vel != VEL_UP && player_vel != VEL_DOWN && !moved) {
+        player_vel = VEL_DOWN; player_texture = PLAYER_HEAD_DOWN;
+        move();
+    }
+}
+
+void move() {
+    moved = true;
+    acumulator = ACUMULATOR_MAX/2;
+}
 
 void key_fun_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
 
     switch (key) {
-    case('A'): if(player_vel!=VEL_RIGHT && player_vel != VEL_LEFT){
-        player_vel = VEL_LEFT; player_texture = PLAYER_HEAD_LEFT;
-        if (max_move < MAX_MOVE) {
-            max_move++;
-            update_player();
-            acumulator = 0.0;
-        }
-    }
-    case('D'): if(player_vel!=VEL_LEFT && player_vel != VEL_RIGHT) {
-        player_vel = VEL_RIGHT; player_texture = PLAYER_HEAD_RIGHT;
-        if (max_move < MAX_MOVE) {
-            max_move++;
-            update_player();
-            acumulator = 0.0;
-        }
-    } break;
-    case('W'): if(player_vel!=VEL_DOWN && player_vel != VEL_UP) {
-        player_vel = VEL_UP; player_texture = PLAYER_HEAD_UP;
-        if (max_move < MAX_MOVE) {
-            max_move++;
-            update_player();
-            acumulator = 0.0;
-        }
-    } break;
-    case('S'): if(player_vel != VEL_UP && player_vel != VEL_DOWN) {
-        player_vel = VEL_DOWN; player_texture = PLAYER_HEAD_DOWN;
-        if (max_move < MAX_MOVE) {
-            max_move++;
-            update_player();
-            acumulator = 0.0;
-        }
-    } break;
+    case('A'): move_left(); break;
+    case('D'): move_right(); break;
+    case('W'): move_up(); break;
+    case('S'): move_down(); break;
+    case(left_arrow): move_left(); break;
+    case(right_arrow): move_right(); break;
+    case(up_arrow): move_up(); break;
+    case(down_arrow): move_down(); break;
     default: break;
     }
     
 }
 
+ma_engine engine;
+ma_sound* pPreLoadedSounds;
+
+
 void init() {
+
+    ma_result result;
+    pPreLoadedSounds = (ma_sound*)calloc(2, sizeof(ma_sound));
+
+    result = ma_engine_init(NULL, &engine);
+    if (result != MA_SUCCESS) {
+        error("Couldn't initialize sound");  // Failed to initialize the engine.
+    }
+
+    result = ma_sound_init_from_file(&engine, "assets/sounds/eat.wav", 0, NULL, NULL, &pPreLoadedSounds[0]);
+    if (result != MA_SUCCESS) {
+        error("Couldn't load sound");
+    }
+
+    result = ma_sound_init_from_file(&engine, "assets/sounds/death.wav", 0, NULL, NULL, &pPreLoadedSounds[1]);
+    if (result != MA_SUCCESS) {
+        error("Couldn't load sound");
+    }
+
     player_coordinates = generate_random_cordinates();
     fruit_cordinates = generate_random_cordinates();
+}
+
+void exit_func() {
+    ma_sound_uninit(&pPreLoadedSounds[0]);
+    ma_sound_uninit(&pPreLoadedSounds[1]);
+    ma_engine_uninit(&engine);
 }
 
 
@@ -501,7 +549,7 @@ vector2 generate_random_cordinates() {
 
 void update_tail() {
     if (player_tail.size() == 0) return;
-    for (uint32_t i = player_tail.size()-1; i >= 0; i--) {
+    for (int32_t i = player_tail.size()-1; i >= 0; i--) {
         if (i == 0) {
             player_tail[i].position = player_coordinates;
             break;
@@ -519,7 +567,14 @@ bool check_die() {
     return false;
 }
 
+void ate_fruit() {
+    fruit_cordinates = generate_random_cordinates();
+    player_tail.push_back(tail(vector2(GRID_SIZE + 1, GRID_SIZE)));
+    ma_engine_play_sound(&engine, "assets/sounds/eat.wav", NULL);
+}
+
 void update_player() {
+    moved = false;
     clear_grid();
     update_tail();
     player_coordinates = player_coordinates + player_vel;
@@ -537,16 +592,16 @@ void update_player() {
     }
 
     if (player_coordinates == fruit_cordinates) {
-        fruit_cordinates = generate_random_cordinates();
-        player_tail.push_back(tail(vector2(GRID_SIZE+1, GRID_SIZE)));
+        ate_fruit();
     }
 
     if (check_die()) {
+        ma_engine_play_sound(&engine, "assets/sounds/death.wav", NULL);
         player_tail.clear();
         clear_grid();
         player_coordinates = generate_random_cordinates();
         fruit_cordinates = generate_random_cordinates();
-        acumulator = WAIT_TIME * 2;
+        acumulator = 0.0;
     }
 }
 
@@ -554,12 +609,13 @@ void update() {
 
     acumulator += dt;
 
-    draw();
-
-    if(acumulator > WAIT_TIME){
-        acumulator = 0.0;
-        max_move = 0;
+    
+    if (acumulator > ACUMULATOR_MAX) {
         update_player();
+        acumulator = 0.0;
+        draw();
     }
+
+    
 
 }

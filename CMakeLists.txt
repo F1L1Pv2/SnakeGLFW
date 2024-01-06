@@ -30,8 +30,11 @@ add_dependencies(SnakeGLFW copy_assets)
 target_link_libraries(SnakeGLFW glfw3)
 target_link_libraries(SnakeGLFW opengl32)
 
-set_target_properties(SnakeGLFW PROPERTIES 
+if (CMAKE_BUILD_TYPE STREQUAL "Release")
+    set_target_properties(SnakeGLFW PROPERTIES 
     LINK_FLAGS "/ENTRY:mainCRTStartup /SUBSYSTEM:WINDOWS")
+endif()
+
 
 
 
